@@ -1,0 +1,11 @@
+numpy==2.3.5
+pandas==2.3.3
+scikit-learn==1.8.0
+matplotlib==3.10.8
+torch==2.9.1
+pillow==12.0.0
+torchvision==0.24.1
+pathlib==1.0.1
+jupyterlab==4.5.0
+requests==2.32.5
+tqdm==4.67.1
