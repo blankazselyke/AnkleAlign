@@ -37,10 +37,10 @@ The table below compares the performance of the custom CNN trained from scratch 
 
 | Metric | Baseline Model (Custom CNN) | Main Model (ResNet18) | Improvement |
 | :--- | :---: | :---: | :---: |
-| **Test Accuracy** | 45.45% | **72.73%** | +27.28% |
-| **Supination F1-Score** | 0.00 | **0.60** | +0.60 |
-| **Weighted Avg Precision** | 0.40 | **0.73** | +0.33 |
-| **Weighted Avg Recall** | 0.45 | **0.73** | +0.28 |
+| **Test Accuracy** | 45.45% | 72.73% | +27.28% |
+| **Supination F1-Score** | 0.00 | 0.60 | +0.60 |
+| **Weighted Avg Precision** | 0.40 | 0.73 | +0.33 |
+| **Weighted Avg Recall** | 0.45 | 0.73 | +0.28 |
 | **Trainable Parameters** | ~3.2M | ~11.2M | - |
 
 #### **Detailed Analysis**
