@@ -235,7 +235,6 @@ def main():
     # Stratified Split (Train / Val / Test)
     logger.info("Performing Stratified Split...")
 
-    # First, split off the Test set (e.g., 10%)
     train_val_df, test_df = train_test_split(
         df, test_size=TEST_SPLIT, stratify=df['label'], random_state=SEED
     )
