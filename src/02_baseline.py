@@ -1,13 +1,15 @@
+import os
+
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import pandas as pd
+from PIL import Image
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
-from PIL import Image
-import os
 
-from config import CSV_PATH_TRAIN, CSV_PATH_VAL, CSV_PATH_TEST, OUTPUT_DIR, EPOCHS_BASE, BATCH_SIZE_BASE, LEARNING_RATE_BASE, BASELINE_SAVE_PATH, SEED
+from config import CSV_PATH_TRAIN, CSV_PATH_VAL, OUTPUT_DIR, EPOCHS_BASE, BATCH_SIZE_BASE, LEARNING_RATE_BASE, \
+    BASELINE_SAVE_PATH
 from utils import setup_logger, count_parameters
 
 logger = setup_logger()
@@ -18,7 +20,6 @@ class CNN(nn.Module):
     A lightweight CNN trained from scratch.
     Serves as a baseline to compare against ResNet18.
     """
-
     def __init__(self, num_classes=3):
         super(CNN, self).__init__()
 
@@ -57,6 +58,34 @@ class CNN(nn.Module):
         return x
 
 
+class BaselineDataset(Dataset):
+    """
+    Simple dataset loader for the baseline model.
+    """
+
+    def __init__(self, df, root_dir, transform=None):
+        self.df = df.reset_index(drop=True)
+        self.root_dir = root_dir
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, idx):
+        row = self.df.iloc[idx]
+        img_path = os.path.join(self.root_dir, row['filename'])
+
+        try:
+            img = Image.open(img_path).convert("RGB")
+        except (OSError, FileNotFoundError):
+            # Return black image on failure to prevent crash
+            img = Image.new('RGB', (224, 224))
+
+        if self.transform:
+            img = self.transform(img)
+
+        return img, torch.tensor(int(row['label']))
+
 def main():
     logger.info("--- BASELINE MODEL TRAINING STARTED ---")
 
@@ -71,7 +100,6 @@ def main():
     # Data Loading
     train_df = pd.read_csv(CSV_PATH_TRAIN)
     val_df = pd.read_csv(CSV_PATH_VAL)
-    test_df = pd.read_csv(CSV_PATH_TEST)
 
     # Standard Transform
     transform = transforms.Compose([
@@ -80,31 +108,22 @@ def main():
         transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
     ])
 
-    class AnkleDataset(Dataset):
-        def __init__(self, df, root_dir):
-            self.df = df.reset_index(drop=True)
-            self.root_dir = root_dir
+    train_loader = DataLoader(
+        BaselineDataset(train_df, OUTPUT_DIR, transform),
+        batch_size=BATCH_SIZE_BASE,
+        shuffle=True
+    )
+    val_loader = DataLoader(
+        BaselineDataset(val_df, OUTPUT_DIR, transform),
+        batch_size=BATCH_SIZE_BASE,
+        shuffle=False
+    )
 
-        def __len__(self):
-            return len(self.df)
-
-        def __getitem__(self, idx):
-            row = self.df.iloc[idx]
-            path = os.path.join(self.root_dir, row['filename'])
-            try:
-                img = Image.open(path).convert("RGB")
-            except:
-                img = Image.new('RGB', (224, 224))
-            return transform(img), torch.tensor(int(row['label']))
-
-    train_loader = DataLoader(AnkleDataset(train_df, OUTPUT_DIR), batch_size=BATCH_SIZE_BASE, shuffle=True)
-    val_loader = DataLoader(AnkleDataset(val_df, OUTPUT_DIR), batch_size=BATCH_SIZE_BASE, shuffle=False)
-
-    # 2. Model Init
+    # Model Initialization
     model = CNN(num_classes=3).to(device)
 
     logger.info("--- Baseline Model Architecture ---")
-    logger.info(str(model))  # Logs the full architecture
+    logger.info(str(model))
 
     total_params, trainable_params = count_parameters(model)
     non_trainable_params = total_params - trainable_params
@@ -117,11 +136,11 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE_BASE)
     criterion = nn.CrossEntropyLoss()
 
-    # 3. Training Loop
+    # Training Loop
     logger.info("Starting baseline training...")
     best_acc = 0.0
 
-    for epoch in range(EPOCHS_BASE):  # Use same epoch count as config
+    for epoch in range(EPOCHS_BASE):
         model.train()
         train_loss = 0.0
         correct = 0

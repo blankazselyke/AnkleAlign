@@ -9,45 +9,60 @@ import os
 from sklearn.metrics import confusion_matrix, classification_report
 import numpy as np
 
-from config import CSV_PATH_TEST, OUTPUT_DIR, MODEL_SAVE_PATH, BASELINE_SAVE_PATH, BATCH_SIZE
+from config import CSV_PATH_TEST, OUTPUT_DIR, MODEL_SAVE_PATH, BASELINE_SAVE_PATH, BATCH_SIZE, BATCH_SIZE_BASE
 from utils import setup_logger
 
 logger = setup_logger()
 
 
-# --- 1. Define Baseline Architecture (Must match 02-baseline.py) ---
 class CNN(nn.Module):
     """
-    The exact same architecture used in 02-baseline.py.
+    A lightweight CNN trained from scratch.
+    Serves as a baseline to compare against ResNet18.
     """
 
     def __init__(self, num_classes=3):
         super(CNN, self).__init__()
-        # Block 1
+
+        # Block 1 (Input: 3 x 224 x 224)
         self.conv1 = nn.Conv2d(3, 8, kernel_size=3, stride=1, padding=1)
+        # Output after Conv: 8 x 224 x 224 -> After Pool: 8 x 112 x 112
+
         # Block 2
         self.conv2 = nn.Conv2d(8, 16, kernel_size=3, stride=1, padding=1)
+        # Output after Conv: 16 x 112 x 112 -> After Pool: 16 x 56 x 56
+
         # Block 3
         self.conv3 = nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1)
-        # Shared Pooling
+        # Output after Conv: 32 x 56 x 56 -> After Pool: 32 x 28 x 28
+
+        # Shared pooling layer (used by all three blocks)
         self.pool = nn.MaxPool2d(2, 2)
-        # FC Layers
-        self.fc1 = nn.Linear(32 * 28 * 28, 128)
-        self.fc2 = nn.Linear(128, num_classes)
+
+        # Fully Connected Layers (Input size: 32 * 28 * 28 = 25088)
+        self.fc1 = nn.Linear(32 * 28 * 28, 128)  # First FC layer
+        self.fc2 = nn.Linear(128, num_classes)  # Second (output) FC layer
 
     def forward(self, x):
+        # Convolutional steps
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))
         x = self.pool(F.relu(self.conv3(x)))
+
+        # Flatten
         x = x.view(-1, 32 * 28 * 28)
-        x = F.relu(self.fc1(x))
-        x = self.fc2(x)
+
+        # Fully Connected steps
+        x = F.relu(self.fc1(x))  # Activation function needed after the first FC layer
+        x = self.fc2(x)  # No activation needed at output (handled by CrossEntropyLoss)
+
         return x
 
 
-# --- 2. Test Dataset Class ---
 class TestDataset(Dataset):
-    """Dataset for loading test images with a specific transform."""
+    """
+    Dataset for loading test images with a specific transform.
+    """
 
     def __init__(self, df, transform):
         self.df = df.reset_index(drop=True)
@@ -62,8 +77,6 @@ class TestDataset(Dataset):
 
         try:
             img = Image.open(img_path).convert("RGB")
-            # Fix EXIF rotation if needed
-            img = ImageOps.exif_transpose(img)
         except Exception as e:
             # logger.warning(f"Image load error ({img_path}): {e}")
             img = Image.new("RGB", (224, 224))
@@ -74,8 +87,10 @@ class TestDataset(Dataset):
         return img, label
 
 
-# --- 3. Evaluation Helper Function ---
 def evaluate_model(model, model_name, test_loader, device):
+    """
+    Runs inference on the test set and logs performance metrics.
+    """
     logger.info(f"--- Evaluating: {model_name} ---")
 
     model.eval()
@@ -94,7 +109,7 @@ def evaluate_model(model, model_name, test_loader, device):
     all_preds = np.array(all_preds)
     all_labels = np.array(all_labels)
 
-    # Metrics
+    # Calculate Accuracy
     accuracy = (all_preds == all_labels).mean()
     logger.info(f"FINAL TEST ACCURACY ({model_name}): {accuracy:.4f}")
 
@@ -121,7 +136,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logger.info(f"Device: {device}")
 
-    # Check that CSV exists
+    # Verify Data Availability
     if not CSV_PATH_TEST.exists():
         logger.error(f"Missing test CSV file: {CSV_PATH_TEST}")
         return
@@ -129,20 +144,16 @@ def main():
     df = pd.read_csv(CSV_PATH_TEST)
     logger.info(f"Test samples loaded: {len(df)}")
 
-    # ==========================================
-    # 1. EVALUATE BASELINE MODEL
-    # ==========================================
+    # Evaluate Baseline Model
     if BASELINE_SAVE_PATH.exists():
-        # Baseline uses simple normalization (0.5)
         baseline_transform = transforms.Compose([
             transforms.Resize((224, 224)),
             transforms.ToTensor(),
             transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
         ])
 
-        baseline_loader = DataLoader(TestDataset(df, baseline_transform), batch_size=BATCH_SIZE, shuffle=False)
+        baseline_loader = DataLoader(TestDataset(df, baseline_transform), batch_size=BATCH_SIZE_BASE, shuffle=False)
 
-        # Init and Load Baseline
         baseline_model = CNN(num_classes=3).to(device)
         baseline_model.load_state_dict(torch.load(BASELINE_SAVE_PATH, map_location=device))
 
@@ -150,11 +161,8 @@ def main():
     else:
         logger.warning(f"Baseline model not found at {BASELINE_SAVE_PATH}. Skipping.")
 
-    # ==========================================
-    # 2. EVALUATE MAIN MODEL (ResNet)
-    # ==========================================
+    # Evaluate Main Model (ResNet18)
     if MODEL_SAVE_PATH.exists():
-        # Main model uses ImageNet normalization
         main_transform = transforms.Compose([
             transforms.Resize((224, 224)),
             transforms.ToTensor(),
@@ -163,15 +171,8 @@ def main():
 
         main_loader = DataLoader(TestDataset(df, main_transform), batch_size=BATCH_SIZE, shuffle=False)
 
-        # Init and Load ResNet
         main_model = models.resnet18(weights=None)
-
-        # NOTE: If you used the Dropout architecture in training, use this:
-        # main_model.fc = nn.Sequential(nn.Dropout(0.5), nn.Linear(512, 3))
-
-        # If you used the standard linear layer, use this:
         main_model.fc = nn.Linear(main_model.fc.in_features, 3)
-
         main_model = main_model.to(device)
 
         try:
@@ -179,8 +180,6 @@ def main():
             evaluate_model(main_model, "Main Model (ResNet18)", main_loader, device)
         except RuntimeError as e:
             logger.error(f"Failed to load Main Model weights: {e}")
-            logger.error(
-                "Did you change the architecture (e.g. added Dropout) in training? Update evaluation.py to match!")
     else:
         logger.warning(f"Main model not found at {MODEL_SAVE_PATH}. Skipping.")
 

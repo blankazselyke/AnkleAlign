@@ -44,7 +44,7 @@ def load_image(image_path):
         logger.error(f"Error loading image {image_path}: {e}")
         return None
 
-    return transform(img).unsqueeze(0)  # Add batch dimension
+    return transform(img).unsqueeze(0)
 
 
 def predict_single(model, image_path, class_names):
