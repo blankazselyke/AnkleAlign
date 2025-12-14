@@ -233,7 +233,6 @@ def main():
     logger.info(f"Full dataset created: {len(df)} images.")
 
     # Stratified Split (Train / Val / Test)
-    # Ensures the class distribution (balance) remains the same in all splits
     logger.info("Performing Stratified Split...")
 
     # First, split off the Test set (e.g., 10%)
@@ -242,7 +241,6 @@ def main():
     )
 
     # Calculate validation size relative to the remaining data
-    # Example: If Val is 10% total, and Test was 10%, we need ~11% of the remaining 90%
     relative_val_size = VAL_SPLIT / (1 - TEST_SPLIT)
 
     train_df, val_df = train_test_split(
